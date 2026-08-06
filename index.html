@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>COLOUR THEREMIN</title>
+<meta name="description" content="Point your camera at the world and play it. Hue is pitch, brightness is volume, motion is vibrato.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Michroma&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0a0b0d;
+    --paper:#edefea;
+    --dim:#8b9089;
+    --rec:#ff4d3d;
+    --live:#ffffff; /* replaced at runtime with the sampled colour */
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overflow:hidden;background:var(--ink);color:var(--paper);
+    font-family:'IBM Plex Mono',monospace;font-size:13px}
+  button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+
+  /* ---------- start screen ---------- */
+  #start{
+    position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:28px;background:var(--ink);
+    text-align:center;padding:24px;transition:opacity .6s ease}
+  #start.gone{opacity:0;pointer-events:none}
+  #start h1{
+    font-family:'Michroma',sans-serif;font-size:clamp(22px,6vw,44px);
+    letter-spacing:.14em;line-height:1.3;font-weight:400}
+  #start h1 .c{display:inline-block;animation:huecycle 9s linear infinite}
+  #start h1 .c:nth-child(2n){animation-delay:-3s}
+  #start h1 .c:nth-child(3n){animation-delay:-6s}
+  @keyframes huecycle{
+    0%{color:#ff5d4d}20%{color:#ffc44d}40%{color:#5dd97a}
+    60%{color:#4db8ff}80%{color:#b06dff}100%{color:#ff5d4d}}
+  @media (prefers-reduced-motion:reduce){
+    #start h1 .c{animation:none;color:var(--paper)}}
+  #start p{max-width:34ch;color:var(--dim);line-height:1.7}
+  #start .rule{color:var(--paper)}
+  #go{
+    border:1px solid var(--paper);padding:14px 42px;letter-spacing:.25em;
+    font-size:14px;transition:background .2s,color .2s}
+  #go:hover,#go:focus-visible{background:var(--paper);color:var(--ink)}
+  #go:focus-visible{outline:2px solid var(--paper);outline-offset:4px}
+  #err{color:#ff7a6b;max-width:36ch;line-height:1.6;display:none}
+
+  /* ---------- instrument ---------- */
+  #video{
+    position:fixed;inset:0;width:100%;height:100%;object-fit:cover;
+    background:var(--ink)}
+  #reticle{
+    position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:min(34vmin,180px);height:min(34vmin,180px);border-radius:50%;
+    border:2px solid var(--live);z-index:5;pointer-events:none;
+    box-shadow:0 0 0 1px rgba(10,11,13,.35), inset 0 0 0 1px rgba(10,11,13,.35);
+    transition:border-color .12s linear}
+  #reticle::before,#reticle::after{
+    content:"";position:absolute;background:var(--live);
+    transition:background-color .12s linear}
+  #reticle::before{left:50%;top:-10px;width:1px;height:8px;transform:translateX(-50%)}
+  #reticle::after{left:50%;bottom:-10px;width:1px;height:8px;transform:translateX(-50%)}
+
+  #topbar{
+    position:fixed;top:0;left:0;right:0;z-index:10;display:flex;
+    justify-content:space-between;align-items:flex-start;padding:14px 16px;
+    background:linear-gradient(to bottom,rgba(10,11,13,.75),transparent)}
+  #wordmark{font-family:'Michroma',sans-serif;font-size:11px;letter-spacing:.2em;
+    padding-top:4px}
+  #rectag{display:none;align-items:center;gap:7px;margin-top:10px;color:var(--rec);
+    font-size:11px;letter-spacing:.15em}
+  #rectag.on{display:flex}
+  #rectag .dot{width:8px;height:8px;border-radius:50%;background:var(--rec);
+    animation:blink 1.2s steps(2,jump-none) infinite}
+  @keyframes blink{50%{opacity:.25}}
+  @media (prefers-reduced-motion:reduce){#rectag .dot{animation:none}}
+  #readout{text-align:right;line-height:1.5}
+  #note{font-family:'Michroma',sans-serif;font-size:26px;letter-spacing:.06em;
+    color:var(--live);transition:color .12s linear}
+  #freq{color:var(--dim);font-size:11px}
+  #hex{color:var(--dim);font-size:11px}
+
+  /* vertical spectrum strip, right edge */
+  #spectrum{
+    position:fixed;top:15%;bottom:26%;right:10px;width:8px;z-index:10;
+    border-radius:4px;border:1px solid rgba(237,239,234,.25);
+    background:linear-gradient(to top,
+      hsl(0 90% 55%),hsl(40 90% 55%),hsl(80 90% 45%),hsl(120 80% 45%),
+      hsl(160 80% 45%),hsl(200 90% 55%),hsl(240 90% 60%),hsl(280 90% 60%),
+      hsl(320 90% 58%),hsl(360 90% 55%))}
+  #marker{
+    position:absolute;left:-7px;width:22px;height:3px;background:var(--paper);
+    border-radius:2px;box-shadow:0 0 6px rgba(10,11,13,.8);
+    transition:top .1s linear}
+
+  /* bottom: oscilloscope + controls */
+  #bottom{
+    position:fixed;left:0;right:0;bottom:0;z-index:10;
+    background:linear-gradient(to top,rgba(10,11,13,.85),transparent);
+    padding:8px 12px calc(14px + env(safe-area-inset-bottom))}
+  #scope{display:block;width:100%;height:64px}
+  #controls{display:flex;gap:8px;justify-content:center;margin-top:8px;flex-wrap:wrap}
+  .ctl{
+    border:1px solid rgba(237,239,234,.35);padding:9px 13px;letter-spacing:.1em;
+    font-size:11px;color:var(--paper);border-radius:2px;
+    transition:background .15s,color .15s,border-color .15s}
+  .ctl[aria-pressed="true"]{background:var(--paper);color:var(--ink);border-color:var(--paper)}
+  .ctl:focus-visible{outline:2px solid var(--paper);outline-offset:3px}
+  #voice{min-width:118px}
+  #rec[aria-pressed="true"]{background:var(--rec);border-color:var(--rec);color:#fff}
+
+  #hint{
+    position:fixed;left:50%;bottom:36%;transform:translateX(-50%);z-index:9;
+    color:rgba(237,239,234,.85);background:rgba(10,11,13,.55);padding:6px 12px;
+    border-radius:2px;letter-spacing:.08em;font-size:11px;pointer-events:none;
+    transition:opacity 1s ease;white-space:nowrap}
+  #hint.gone{opacity:0}
+
+  /* ---------- take panel ---------- */
+  #take{
+    position:fixed;inset:0;z-index:40;display:none;align-items:center;
+    justify-content:center;background:rgba(10,11,13,.8);padding:24px}
+  #take.on{display:flex}
+  #takecard{
+    background:var(--ink);border:1px solid rgba(237,239,234,.4);border-radius:3px;
+    padding:26px 24px;max-width:340px;width:100%;text-align:center}
+  #takecard h2{font-family:'Michroma',sans-serif;font-size:13px;letter-spacing:.2em;
+    font-weight:400;margin-bottom:6px}
+  #takemeta{color:var(--dim);font-size:11px;margin-bottom:18px}
+  #takevid{width:100%;border-radius:2px;margin-bottom:18px;background:#000;display:none}
+  #takevid.on{display:block}
+  .take-actions{display:flex;gap:10px;justify-content:center}
+  .take-actions a,.take-actions button{
+    display:inline-block;border:1px solid var(--paper);padding:11px 18px;
+    letter-spacing:.15em;font-size:11px;color:var(--paper);text-decoration:none;
+    border-radius:2px;transition:background .15s,color .15s}
+  .take-actions a{background:var(--paper);color:var(--ink)}
+  .take-actions a:hover,.take-actions button:hover{background:var(--paper);color:var(--ink)}
+</style>
+</head>
+<body>
+
+<!-- START -->
+<div id="start">
+  <h1><span class="c">C</span><span class="c">O</span><span class="c">L</span><span class="c">O</span><span class="c">U</span><span class="c">R</span>&nbsp;<span class="c">T</span><span class="c">H</span><span class="c">E</span><span class="c">R</span><span class="c">E</span><span class="c">M</span><span class="c">I</span><span class="c">N</span></h1>
+  <p>Point your camera at the world and play it.<br><br>
+     <span class="rule">HUE</span> is pitch &nbsp;·&nbsp; <span class="rule">BRIGHTNESS</span> is volume &nbsp;·&nbsp; <span class="rule">MOTION</span> is vibrato</p>
+  <button id="go">START</button>
+  <p id="err"></p>
+</div>
+
+<!-- INSTRUMENT -->
+<video id="video" autoplay playsinline muted></video>
+<div id="reticle" aria-hidden="true"></div>
+
+<header id="topbar">
+  <div>
+    <div id="wordmark">COLOUR THEREMIN</div>
+    <div id="rectag"><span class="dot"></span><span id="rectime">0:00</span></div>
+  </div>
+  <div id="readout" aria-live="off">
+    <div id="note">—</div>
+    <div id="freq">0 Hz</div>
+    <div id="hex">#000000</div>
+  </div>
+</header>
+
+<div id="spectrum" aria-hidden="true"><div id="marker"></div></div>
+
+<div id="hint">Aim the circle at a colour</div>
+
+<div id="bottom">
+  <canvas id="scope" aria-hidden="true"></canvas>
+  <div id="controls">
+    <button class="ctl" id="voice">VOICE · SAW</button>
+    <button class="ctl" id="snap" aria-pressed="false">SNAP</button>
+    <button class="ctl" id="flip" aria-pressed="false">FLIP</button>
+    <button class="ctl" id="mute" aria-pressed="false">MUTE</button>
+    <button class="ctl" id="rec" aria-pressed="false">● REC</button>
+  </div>
+</div>
+
+<!-- TAKE PANEL -->
+<div id="take" role="dialog" aria-label="Recorded take">
+  <div id="takecard">
+    <h2>TAKE SAVED</h2>
+    <div id="takemeta"></div>
+    <video id="takevid" playsinline controls></video>
+    <div class="take-actions">
+      <a id="dl" download>DOWNLOAD</a>
+      <button id="dismiss">DISCARD</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const video = $('video');
+  const startEl = $('start');
+  const errEl = $('err');
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---------- state ----------
+  let audio, osc, osc2, oscGain, osc2Gain, gainNode, filter, lfo, lfoGain, analyser, recDest;
+  let stream = null, facing = 'environment';
+  let running = false, muted = false, snapScale = false;
+  let smHue = 0, smSat = 0, smLight = 0, smMotion = 0, haveHue = false;
+  let prevFrame = null;
+
+  const sampleCanvas = document.createElement('canvas');
+  const SAMPLE = 48;                       // sampling resolution
+  sampleCanvas.width = SAMPLE; sampleCanvas.height = SAMPLE;
+  const sctx = sampleCanvas.getContext('2d', { willReadFrequently: true });
+
+  // pitch range: 2.5 octaves, red = low, violet = high
+  const F_LO = 110, F_HI = 660;
+  const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  // A minor pentatonic pitch classes: A C D E G
+  const PENTA = [9, 0, 2, 4, 7];
+
+  // ---------- voices ----------
+  // t1/t2: oscillator types · g: level · ratio2: osc2 freq multiple · det2: osc2 detune (cents)
+  const VOICES = [
+    { name:'SAW',    t1:'sawtooth', g1:1.0,  t2:null },
+    { name:'PURE',   t1:'sine',     g1:1.0,  t2:null },
+    { name:'CHIP',   t1:'square',   g1:0.55, t2:null },
+    { name:'DRONE',  t1:'sawtooth', g1:0.6,  t2:'sawtooth', g2:0.6, ratio2:0.5, det2:9 },
+    { name:'ORGAN',  t1:'sine',     g1:0.7,  t2:'sine',     g2:0.45, ratio2:2,  det2:0 },
+  ];
+  let voiceIdx = 0;
+
+  function applyVoice(){
+    const v = VOICES[voiceIdx];
+    const now = audio ? audio.currentTime : 0;
+    osc.type = v.t1;
+    oscGain.gain.setTargetAtTime(v.g1, now, 0.03);
+    if (v.t2){
+      osc2.type = v.t2;
+      osc2.detune.setTargetAtTime(v.det2 || 0, now, 0.03);
+      osc2Gain.gain.setTargetAtTime(v.g2, now, 0.03);
+    } else {
+      osc2Gain.gain.setTargetAtTime(0, now, 0.03);
+    }
+    $('voice').textContent = 'VOICE · ' + v.name;
+  }
+
+  // ---------- audio ----------
+  function buildAudio(){
+    audio = new (window.AudioContext || window.webkitAudioContext)();
+    osc = audio.createOscillator();
+    osc2 = audio.createOscillator();
+    oscGain = audio.createGain();
+    osc2Gain = audio.createGain();
+    osc2Gain.gain.value = 0;
+    filter = audio.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 1200;
+    filter.Q.value = 1;
+    gainNode = audio.createGain();
+    gainNode.gain.value = 0;
+    lfo = audio.createOscillator();          // vibrato
+    lfo.frequency.value = 5.5;
+    lfoGain = audio.createGain();
+    lfoGain.gain.value = 0;
+    analyser = audio.createAnalyser();
+    analyser.fftSize = 1024;
+    recDest = audio.createMediaStreamDestination();   // recorder tap
+
+    lfo.connect(lfoGain);
+    lfoGain.connect(osc.frequency);
+    lfoGain.connect(osc2.frequency);
+    osc.connect(oscGain);
+    osc2.connect(osc2Gain);
+    oscGain.connect(filter);
+    osc2Gain.connect(filter);
+    filter.connect(gainNode);
+    gainNode.connect(analyser);
+    analyser.connect(audio.destination);
+    analyser.connect(recDest);
+    osc.start(); osc2.start(); lfo.start();
+    applyVoice();
+  }
+
+  // ---------- camera ----------
+  async function openCamera(){
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: facing, width: { ideal: 1280 } }, audio: false
+    });
+    video.srcObject = stream;
+    video.style.transform = (facing === 'user') ? 'scaleX(-1)' : 'none';
+    await video.play();
+  }
+
+  // ---------- colour maths ----------
+  function rgbToHsl(r, g, b){
+    r/=255; g/=255; b/=255;
+    const max = Math.max(r,g,b), min = Math.min(r,g,b);
+    let h = 0, s = 0; const l = (max+min)/2;
+    if (max !== min){
+      const d = max - min;
+      s = l > .5 ? d/(2-max-min) : d/(max+min);
+      switch(max){
+        case r: h = ((g-b)/d + (g < b ? 6 : 0)); break;
+        case g: h = (b-r)/d + 2; break;
+        default: h = (r-g)/d + 4;
+      }
+      h *= 60;
+    }
+    return [h, s, l];
+  }
+
+  // circular smoothing so red↔violet doesn't jump
+  function smoothHue(cur, target, k){
+    let d = target - cur;
+    if (d > 180) d -= 360;
+    if (d < -180) d += 360;
+    let out = cur + d * k;
+    if (out < 0) out += 360;
+    if (out >= 360) out -= 360;
+    return out;
+  }
+
+  function hueToFreq(h){
+    let f = F_LO * Math.pow(F_HI / F_LO, h / 360);   // exponential = even musical spacing
+    if (snapScale){
+      const midi = 69 + 12 * Math.log2(f / 440);
+      let best = null, bestDist = 1e9;
+      for (let m = Math.floor(midi) - 12; m <= Math.ceil(midi) + 12; m++){
+        if (!PENTA.includes(((m % 12) + 12) % 12)) continue;
+        const d = Math.abs(m - midi);
+        if (d < bestDist){ bestDist = d; best = m; }
+      }
+      f = 440 * Math.pow(2, (best - 69) / 12);
+    }
+    return f;
+  }
+
+  function freqToNoteName(f){
+    const midi = Math.round(69 + 12 * Math.log2(f / 440));
+    return NOTE_NAMES[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1);
+  }
+
+  // ---------- recording ----------
+  let recorder = null, recChunks = [], recStart = 0, recMime = '', recHasVideo = false;
+  let lastURL = null;
+
+  function pickMime(){
+    const withVideo = ['video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm'];
+    const audioOnly = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'];
+    if (window.MediaRecorder){
+      for (const m of withVideo) if (MediaRecorder.isTypeSupported(m)) return { mime:m, video:true };
+      for (const m of audioOnly) if (MediaRecorder.isTypeSupported(m)) return { mime:m, video:false };
+    }
+    return null;
+  }
+
+  function startRec(){
+    const pick = pickMime();
+    if (!pick){ alert('Recording is not supported in this browser.'); return false; }
+    const tracks = [...recDest.stream.getAudioTracks()];
+    recHasVideo = false;
+    if (pick.video && stream && stream.getVideoTracks().length){
+      tracks.unshift(stream.getVideoTracks()[0]);
+      recHasVideo = true;
+    }
+    recMime = pick.mime;
+    recChunks = [];
+    try{
+      recorder = new MediaRecorder(new MediaStream(tracks), { mimeType: recMime });
+    }catch(e){
+      try{ recorder = new MediaRecorder(new MediaStream(tracks)); recMime = recorder.mimeType || recMime; }
+      catch(e2){ alert('Could not start the recorder: ' + (e2.message || e2)); return false; }
+    }
+    recorder.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); };
+    recorder.onstop = showTake;
+    recorder.start(1000);
+    recStart = performance.now();
+    $('rectag').classList.add('on');
+    return true;
+  }
+
+  function stopRec(){
+    if (recorder && recorder.state !== 'inactive') recorder.stop();
+    $('rectag').classList.remove('on');
+  }
+
+  function showTake(){
+    const blob = new Blob(recChunks, { type: recMime.split(';')[0] });
+    if (lastURL) URL.revokeObjectURL(lastURL);
+    lastURL = URL.createObjectURL(blob);
+    const secs = Math.round((performance.now() - recStart) / 1000);
+    const ext = recMime.includes('mp4') ? (recHasVideo ? 'mp4' : 'm4a') : 'webm';
+    const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+    const dl = $('dl');
+    dl.href = lastURL;
+    dl.download = 'colour-theremin-' + stamp + '.' + ext;
+    $('takemeta').textContent =
+      fmtTime(secs) + ' · ' + VOICES[voiceIdx].name + ' · ' + (recHasVideo ? 'VIDEO + SOUND' : 'SOUND ONLY');
+    const tv = $('takevid');
+    if (recHasVideo){ tv.src = lastURL; tv.classList.add('on'); }
+    else { tv.removeAttribute('src'); tv.classList.remove('on'); }
+    $('take').classList.add('on');
+  }
+
+  function fmtTime(s){ return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); }
+
+  $('dismiss').addEventListener('click', () => {
+    $('take').classList.remove('on');
+    const tv = $('takevid'); tv.pause && tv.pause();
+  });
+
+  // ---------- main loop ----------
+  const scope = $('scope');
+  const scopeCtx = scope.getContext('2d');
+  function sizeScope(){
+    scope.width = scope.clientWidth * devicePixelRatio;
+    scope.height = 64 * devicePixelRatio;
+  }
+  addEventListener('resize', sizeScope);
+
+  let waveBuf;
+
+  function loop(){
+    if (!running) return;
+    requestAnimationFrame(loop);
+
+    // recording timer
+    if (recorder && recorder.state === 'recording'){
+      $('rectime').textContent = fmtTime(Math.floor((performance.now() - recStart) / 1000));
+    }
+
+    if (video.videoWidth === 0) return;
+
+    // sample the central circle of the frame
+    const vw = video.videoWidth, vh = video.videoHeight;
+    const side = Math.min(vw, vh) * 0.34;
+    sctx.drawImage(video, (vw-side)/2, (vh-side)/2, side, side, 0, 0, SAMPLE, SAMPLE);
+    const img = sctx.getImageData(0, 0, SAMPLE, SAMPLE);
+    const d = img.data;
+
+    let r=0,g=0,b=0,count=0, motion=0;
+    const R = SAMPLE/2;
+    for (let y=0; y<SAMPLE; y++){
+      for (let x=0; x<SAMPLE; x++){
+        const dx=x-R, dy=y-R;
+        if (dx*dx + dy*dy > R*R) continue;         // circular mask
+        const i = (y*SAMPLE + x)*4;
+        r += d[i]; g += d[i+1]; b += d[i+2]; count++;
+        if (prevFrame){
+          motion += Math.abs(d[i]-prevFrame[i]) + Math.abs(d[i+1]-prevFrame[i+1]) + Math.abs(d[i+2]-prevFrame[i+2]);
+        }
+      }
+    }
+    prevFrame = new Uint8ClampedArray(d);
+    r/=count; g/=count; b/=count;
+    motion = motion / (count*3*255);               // 0..1
+
+    const [h, s, l] = rgbToHsl(r, g, b);
+
+    if (!haveHue){ smHue = h; haveHue = true; }
+    smHue   = smoothHue(smHue, h, 0.12);
+    smSat   += (s - smSat) * 0.15;
+    smLight += (l - smLight) * 0.15;
+    smMotion += (Math.min(motion*6, 1) - smMotion) * 0.08;
+
+    // --- drive the synth ---
+    const now = audio.currentTime;
+    const f = hueToFreq(smHue);
+    const v = VOICES[voiceIdx];
+    osc.frequency.setTargetAtTime(f, now, snapScale ? 0.05 : 0.03);
+    osc2.frequency.setTargetAtTime(f * (v.ratio2 || 1), now, snapScale ? 0.05 : 0.03);
+
+    // brightness -> loudness (with a floor so black is silent)
+    const vol = muted ? 0 : Math.pow(Math.max(smLight - 0.04, 0), 1.4) * 0.5;
+    gainNode.gain.setTargetAtTime(vol, now, 0.08);
+
+    // saturation -> brightness of timbre; grey scenes sound dull
+    filter.frequency.setTargetAtTime(300 + smSat * 3200, now, 0.1);
+
+    // motion -> vibrato depth
+    lfoGain.gain.setTargetAtTime(smMotion * f * 0.045, now, 0.1);
+
+    // --- drive the UI ---
+    const liveCss = `hsl(${smHue.toFixed(0)} ${(Math.max(smSat,0.25)*100).toFixed(0)}% ${(45 + smLight*25).toFixed(0)}%)`;
+    document.documentElement.style.setProperty('--live', liveCss);
+    $('note').textContent = vol < 0.005 ? '·' : freqToNoteName(f);
+    $('freq').textContent = f.toFixed(1) + ' Hz';
+    const hx = c => Math.round(c).toString(16).padStart(2,'0');
+    $('hex').textContent = '#' + hx(r) + hx(g) + hx(b);
+    $('marker').style.top = ((1 - smHue/360) * 100) + '%';
+
+    // --- oscilloscope ---
+    if (!waveBuf || waveBuf.length !== analyser.fftSize) waveBuf = new Uint8Array(analyser.fftSize);
+    analyser.getByteTimeDomainData(waveBuf);
+    const W = scope.width, H = scope.height;
+    scopeCtx.clearRect(0, 0, W, H);
+    scopeCtx.lineWidth = 2 * devicePixelRatio;
+    scopeCtx.strokeStyle = liveCss;
+    scopeCtx.beginPath();
+    const step = reduceMotion ? 16 : 2;
+    for (let i = 0; i < waveBuf.length; i += step){
+      const x = (i / waveBuf.length) * W;
+      const y = (waveBuf[i] / 255) * H;
+      i === 0 ? scopeCtx.moveTo(x, y) : scopeCtx.lineTo(x, y);
+    }
+    scopeCtx.stroke();
+  }
+
+  // ---------- boot ----------
+  $('go').addEventListener('click', async () => {
+    errEl.style.display = 'none';
+    try{
+      if (!audio) buildAudio();
+      await audio.resume();
+      await openCamera();
+      running = true;
+      sizeScope();
+      startEl.classList.add('gone');
+      requestAnimationFrame(loop);
+      setTimeout(() => $('hint').classList.add('gone'), 5000);
+    }catch(e){
+      errEl.textContent = (e && e.name === 'NotAllowedError')
+        ? 'Camera permission was refused. Allow camera access and press START again.'
+        : 'Could not open the camera: ' + (e.message || e);
+      errEl.style.display = 'block';
+    }
+  });
+
+  // ---------- controls ----------
+  function toggle(btn){ const v = btn.getAttribute('aria-pressed') !== 'true';
+    btn.setAttribute('aria-pressed', v); return v; }
+
+  $('voice').addEventListener('click', () => {
+    voiceIdx = (voiceIdx + 1) % VOICES.length;
+    applyVoice();
+  });
+  $('snap').addEventListener('click', e => { snapScale = toggle(e.currentTarget); });
+  $('mute').addEventListener('click', e => { muted = toggle(e.currentTarget); });
+  $('flip').addEventListener('click', async e => {
+    const wasRecording = recorder && recorder.state === 'recording';
+    if (wasRecording){ stopRec(); $('rec').setAttribute('aria-pressed','false'); }
+    facing = (facing === 'environment') ? 'user' : 'environment';
+    e.currentTarget.setAttribute('aria-pressed', facing === 'user');
+    try{ await openCamera(); prevFrame = null; }catch(_){ /* keep old cam */ }
+  });
+  $('rec').addEventListener('click', e => {
+    const btn = e.currentTarget;
+    if (recorder && recorder.state === 'recording'){
+      stopRec();
+      btn.setAttribute('aria-pressed','false');
+      btn.textContent = '● REC';
+    } else {
+      if (startRec()){
+        btn.setAttribute('aria-pressed','true');
+        btn.textContent = '■ STOP';
+      }
+    }
+  });
+
+  // pause audio when tab hidden
+  document.addEventListener('visibilitychange', () => {
+    if (!audio) return;
+    if (document.hidden){ gainNode.gain.setTargetAtTime(0, audio.currentTime, 0.05); }
+  });
+})();
+</script>
+</body>
+</html>
