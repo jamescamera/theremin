@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>COLOUR THEREMIN</title>
-<meta name="description" content="Point your camera at the world and play it. Hue is pitch, brightness is volume, motion is vibrato.">
+<meta name="description" content="Point your camera at the world and play it. Hue is pitch, brightness is volume, motion is vibrato — and an 808 beat machine you tune with colour.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Michroma&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -118,6 +118,59 @@
     transition:opacity 1s ease;white-space:nowrap}
   #hint.gone{opacity:0}
 
+  /* ---------- beat machine ---------- */
+  body.beat #scope{display:none}
+  body.beat #bottom{
+    background:linear-gradient(to top,rgba(10,11,13,.93) 74%,rgba(10,11,13,.5))}
+  #beatpanel{display:none;margin-top:2px;padding-top:2px}
+  body.beat #beatpanel{display:block}
+
+  body.beat #hint{display:none}
+  #transport{display:flex;gap:6px 8px;align-items:center;justify-content:center;
+    flex-wrap:wrap;margin-bottom:8px}
+  #transport .tgrp{display:flex;gap:6px;align-items:center;flex:none}
+  .bctl{
+    border:1px solid rgba(237,239,234,.35);padding:6px 9px;font-size:10px;
+    letter-spacing:.1em;border-radius:2px;color:var(--paper);touch-action:manipulation;
+    transition:background .15s,color .15s,border-color .15s}
+  .bctl:focus-visible{outline:2px solid var(--paper);outline-offset:3px}
+  #play[aria-pressed="true"]{background:var(--paper);color:var(--ink);border-color:var(--paper)}
+  #tempo{display:flex;align-items:center;border:1px solid rgba(237,239,234,.35);
+    border-radius:2px;overflow:hidden}
+  #tempo button{padding:5px 11px;font-size:13px;line-height:1;touch-action:manipulation}
+  #tempo button:focus-visible{outline:2px solid var(--paper);outline-offset:-2px}
+  #bpmval{font-size:10px;letter-spacing:.08em;min-width:54px;text-align:center}
+
+  #head{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+  #head .spacer{width:38px;flex:none}
+  #headcells{flex:1;display:grid;grid-template-columns:repeat(16,1fr);gap:2px}
+  .hd{height:3px;border-radius:2px;background:rgba(237,239,234,.14);
+    transition:background-color .06s linear}
+  .hd.on{background:var(--live)}
+
+  #grid{display:flex;flex-direction:column;gap:2px}
+  .brow{display:flex;align-items:center;gap:6px}
+  .blbl{
+    width:38px;flex:none;font-size:9px;letter-spacing:.06em;text-align:right;
+    color:var(--dim);padding:3px 0;touch-action:manipulation}
+  .blbl.muted{opacity:.3;text-decoration:line-through}
+  .blbl:focus-visible{outline:2px solid var(--paper);outline-offset:2px}
+  .bcells{flex:1;display:grid;grid-template-columns:repeat(16,1fr);gap:2px}
+  .cell{
+    height:18px;border-radius:2px;padding:0;touch-action:manipulation;
+    background:rgba(237,239,234,.10);border:1px solid rgba(237,239,234,.10);
+    transition:background-color .08s linear,transform .07s ease}
+  .cell:nth-child(4n+1){border-left-color:rgba(237,239,234,.45)}
+  .cell.on{background:var(--paper);border-color:var(--paper)}
+  .row-bass .cell{height:20px}
+  .row-bass .cell.on{border-color:rgba(10,11,13,.4)}
+  .cell.hit{transform:scale(.82)}
+  .cell:focus-visible{outline:2px solid var(--paper);outline-offset:2px}
+
+  #beatinfo{
+    margin-top:8px;text-align:center;color:var(--dim);font-size:9px;
+    letter-spacing:.08em;line-height:1.5}
+
   /* ---------- take panel ---------- */
   #take{
     position:fixed;inset:0;z-index:40;display:none;align-items:center;
@@ -146,7 +199,8 @@
 <div id="start">
   <h1><span class="c">C</span><span class="c">O</span><span class="c">L</span><span class="c">O</span><span class="c">U</span><span class="c">R</span>&nbsp;<span class="c">T</span><span class="c">H</span><span class="c">E</span><span class="c">R</span><span class="c">E</span><span class="c">M</span><span class="c">I</span><span class="c">N</span></h1>
   <p>Point your camera at the world and play it.<br><br>
-     <span class="rule">HUE</span> is pitch &nbsp;·&nbsp; <span class="rule">BRIGHTNESS</span> is volume &nbsp;·&nbsp; <span class="rule">MOTION</span> is vibrato</p>
+     <span class="rule">HUE</span> is pitch &nbsp;·&nbsp; <span class="rule">BRIGHTNESS</span> is volume &nbsp;·&nbsp; <span class="rule">MOTION</span> is vibrato<br><br>
+     Hit <span class="rule">BEAT</span> for 808 drums, and write a bassline<br>from the colours you aim at.</p>
   <button id="go">START</button>
   <p id="err"></p>
 </div>
@@ -175,10 +229,33 @@
   <canvas id="scope" aria-hidden="true"></canvas>
   <div id="controls">
     <button class="ctl" id="voice">VOICE · SAW</button>
+    <button class="ctl" id="beat" aria-pressed="false">BEAT</button>
     <button class="ctl" id="snap" aria-pressed="false">SNAP</button>
     <button class="ctl" id="flip" aria-pressed="false">FLIP</button>
     <button class="ctl" id="mute" aria-pressed="false">MUTE</button>
     <button class="ctl" id="rec" aria-pressed="false">● REC</button>
+  </div>
+
+  <!-- BEAT MACHINE -->
+  <div id="beatpanel">
+    <div id="transport">
+      <div class="tgrp">
+        <button class="bctl" id="play" aria-pressed="false">▶ PLAY</button>
+        <div id="tempo">
+          <button id="bpmdn" aria-label="Slower">−</button>
+          <span id="bpmval">92 BPM</span>
+          <button id="bpmup" aria-label="Faster">+</button>
+        </div>
+      </div>
+      <div class="tgrp">
+        <button class="bctl" id="swing">STRAIGHT</button>
+        <button class="bctl" id="ptn">BOOM BAP</button>
+        <button class="bctl" id="clr">CLEAR</button>
+      </div>
+    </div>
+    <div id="head"><div class="spacer"></div><div id="headcells"></div></div>
+    <div id="grid"></div>
+    <div id="beatinfo"></div>
   </div>
 </div>
 
@@ -282,6 +359,321 @@
     analyser.connect(recDest);
     osc.start(); osc2.start(); lfo.start();
     applyVoice();
+    buildDrums();
+  }
+
+  // ---------- 808 drum voices ----------
+  // Everything below is synthesised: no samples, no network.
+  let drumBus, bassIn, noiseBuf;
+  const DRUM_LEVEL = 0.85;
+
+  function buildDrums(){
+    noiseBuf = audio.createBuffer(1, Math.floor(audio.sampleRate * 2), audio.sampleRate);
+    const nd = noiseBuf.getChannelData(0);
+    for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+
+    drumBus = audio.createGain();
+    drumBus.gain.value = DRUM_LEVEL;
+    const comp = audio.createDynamicsCompressor();
+    comp.threshold.value = -14; comp.knee.value = 8; comp.ratio.value = 5;
+    comp.attack.value = 0.004; comp.release.value = 0.16;
+    drumBus.connect(comp);
+    comp.connect(analyser);                 // analyser already feeds speakers + recorder
+
+    // the 808 sub runs through soft saturation for that fat, driven tail
+    bassIn = audio.createWaveShaper();
+    bassIn.curve = satCurve(2.4);
+    bassIn.oversample = '2x';
+    const bassLp = audio.createBiquadFilter();
+    bassLp.type = 'lowpass'; bassLp.frequency.value = 2400;
+    bassIn.connect(bassLp); bassLp.connect(drumBus);
+  }
+
+  function satCurve(k){
+    const n = 1024, c = new Float32Array(n), d = Math.tanh(k);
+    for (let i = 0; i < n; i++){
+      const x = (i / (n - 1)) * 2 - 1;
+      c[i] = Math.tanh(x * k) / d;
+    }
+    return c;
+  }
+
+  // exponential attack/decay envelope
+  function env(g, t, peak, atk, dec){
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + atk);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + atk + dec);
+  }
+
+  function noiseAt(t, dur){
+    const s = audio.createBufferSource();
+    s.buffer = noiseBuf; s.loop = true;
+    s.start(t, Math.random() * 1.5); s.stop(t + dur);
+    return s;
+  }
+
+  function dKick(t){
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(165, t);
+    o.frequency.exponentialRampToValueAtTime(44, t + 0.11);
+    env(g, t, 1.0, 0.004, 0.44);
+    o.connect(g); g.connect(drumBus);
+    o.start(t); o.stop(t + 0.5);
+    const n = noiseAt(t, 0.03), hp = audio.createBiquadFilter(), ng = audio.createGain();
+    hp.type = 'highpass'; hp.frequency.value = 1400;      // beater click
+    env(ng, t, 0.22, 0.001, 0.022);
+    n.connect(hp); hp.connect(ng); ng.connect(drumBus);
+  }
+
+  function dSnare(t){
+    const n = noiseAt(t, 0.24), hp = audio.createBiquadFilter(), g = audio.createGain();
+    hp.type = 'highpass'; hp.frequency.value = 1500;
+    env(g, t, 0.5, 0.002, 0.17);
+    n.connect(hp); hp.connect(g); g.connect(drumBus);
+    const o = audio.createOscillator(), og = audio.createGain();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(225, t);
+    o.frequency.exponentialRampToValueAtTime(150, t + 0.1);
+    env(og, t, 0.45, 0.002, 0.12);
+    o.connect(og); og.connect(drumBus);
+    o.start(t); o.stop(t + 0.2);
+  }
+
+  function dClap(t){
+    const bp = audio.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = 1100; bp.Q.value = 1.1;
+    bp.connect(drumBus);
+    for (const off of [0, 0.011, 0.022]){                 // three quick slaps
+      const n = noiseAt(t + off, 0.05), g = audio.createGain();
+      env(g, t + off, 0.45, 0.001, 0.035);
+      n.connect(g); g.connect(bp);
+    }
+    const n = noiseAt(t + 0.033, 0.24), g = audio.createGain();   // and the room tail
+    env(g, t + 0.033, 0.38, 0.002, 0.19);
+    n.connect(g); g.connect(bp);
+  }
+
+  // classic 808 metal: six detuned squares through a bandpass/highpass pair
+  const HAT_RATIOS = [2, 3, 4.16, 5.43, 6.79, 8.21];
+  function dHat(t, open){
+    const dec = open ? 0.34 : 0.05;
+    const bp = audio.createBiquadFilter(), hp = audio.createBiquadFilter(), g = audio.createGain();
+    bp.type = 'bandpass'; bp.frequency.value = 10000; bp.Q.value = 0.8;
+    hp.type = 'highpass'; hp.frequency.value = 7000;
+    env(g, t, open ? 0.24 : 0.3, 0.001, dec);
+    bp.connect(hp); hp.connect(g); g.connect(drumBus);
+    for (const r of HAT_RATIOS){
+      const o = audio.createOscillator();
+      o.type = 'square'; o.frequency.value = 40 * r;
+      o.connect(bp); o.start(t); o.stop(t + dec + 0.05);
+    }
+  }
+
+  function d808(t, f, dec){
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(f * 2.1, t);               // the pitch-drop pluck
+    o.frequency.exponentialRampToValueAtTime(f, t + 0.045);
+    env(g, t, 0.9, 0.006, dec);
+    o.connect(g); g.connect(bassIn);
+    o.start(t); o.stop(t + dec + 0.1);
+  }
+
+  // ---------- sequencer ----------
+  const STEPS = 16;
+  const TRACKS = ['kick','snare','clap','hat','open','bass'];
+  const LABELS = { kick:'KICK', snare:'SNARE', clap:'CLAP', hat:'HAT', open:'OPEN', bass:'808' };
+  const pat = {}, mutes = {}, cells = {};
+  TRACKS.forEach(id => { pat[id] = new Array(STEPS).fill(null); mutes[id] = false; });
+  const headEls = [];
+
+  const SWINGS = [{ n:'STRAIGHT', v:0 }, { n:'SWING', v:0.14 }, { n:'SHUFFLE', v:0.22 }];
+  // 'x' marks a hit. 808 rows are gates — the pitch comes from the colour you are aiming at.
+  const PATTERNS = [
+    { name:'BOOM BAP',
+      kick :'x......x..x.....', snare:'....x.......x...', clap :'................',
+      hat  :'x.x.x.x.x.x.x.x.', open :'................', bass :'x.........x.....' },
+    { name:'TRAP',
+      kick :'x.....x...x.....', snare:'................', clap :'........x.......',
+      hat  :'x.x.x.x.x.xxx.x.', open :'..............x.', bass :'x.........x.....' },
+    { name:'FOUR',
+      kick :'x...x...x...x...', snare:'................', clap :'....x.......x...',
+      hat  :'................', open :'..x...x...x...x.', bass :'x.......x.......' },
+    { name:'BREAK',
+      kick :'x.....x.........', snare:'....x.......x..x', clap :'................',
+      hat  :'x.xxx.x.x.xxx.x.', open :'................', bass :'x...............' },
+    { name:'DUB',
+      kick :'x.........x.....', snare:'........x.......', clap :'................',
+      hat  :'................', open :'....x.......x...', bass :'x.......x...x...' },
+  ];
+
+  const INFO = 'TAP 808 FOR THE COLOUR YOU AIM AT · TAP NAMES TO MUTE';
+  let playing = false, bpm = 92, curStep = 0, nextTime = 0, tickTimer = null;
+  let swingIdx = 0, ptnIdx = 0, beatOpen = false, seeded = false, lastCol = -1, infoTimer = null;
+  const drawQ = [];
+  let liveHue = 0, liveFreq = 220;
+
+  function stepDur(){ return 15 / bpm; }                  // one sixteenth, in seconds
+
+  function buildGrid(){
+    const hc = $('headcells');
+    for (let i = 0; i < STEPS; i++){
+      const d = document.createElement('div');
+      d.className = 'hd'; hc.appendChild(d); headEls.push(d);
+    }
+    const grid = $('grid');
+    for (const id of TRACKS){
+      const row = document.createElement('div');
+      row.className = 'brow row-' + id;
+      const lbl = document.createElement('button');
+      lbl.className = 'blbl'; lbl.type = 'button';
+      lbl.textContent = LABELS[id];
+      lbl.setAttribute('aria-label', 'Mute ' + LABELS[id]);
+      lbl.addEventListener('click', () => {
+        mutes[id] = !mutes[id];
+        lbl.classList.toggle('muted', mutes[id]);
+        lbl.setAttribute('aria-pressed', mutes[id]);
+      });
+      const wrap = document.createElement('div');
+      wrap.className = 'bcells';
+      cells[id] = [];
+      for (let i = 0; i < STEPS; i++){
+        const c = document.createElement('button');
+        c.className = 'cell'; c.type = 'button';
+        c.setAttribute('aria-label', LABELS[id] + ' step ' + (i + 1));
+        c.addEventListener('click', () => toggleCell(id, i));
+        wrap.appendChild(c); cells[id].push(c);
+      }
+      row.append(lbl, wrap); grid.appendChild(row);
+    }
+    $('beatinfo').textContent = INFO;
+  }
+
+  // the note under the reticle right now, folded down into 808 territory
+  function liveNote(){
+    let f = liveFreq / 4;
+    if (!(f > 0)) f = 55;                                 // never let the fold below spin
+    while (f < 41) f *= 2;                                // octave folding keeps it in key
+    return { f, css:`hsl(${liveHue.toFixed(0)} 85% 58%)`, note: freqToNoteName(f) };
+  }
+
+  function paintCell(id, i){
+    const c = cells[id][i], v = pat[id][i];
+    c.classList.toggle('on', !!v);
+    c.setAttribute('aria-pressed', !!v);
+    if (id === 'bass'){
+      c.style.background = v ? v.css : '';
+      if (v) c.title = v.note; else c.removeAttribute('title');
+    }
+  }
+
+  function toggleCell(id, i){
+    if (pat[id][i]) pat[id][i] = null;
+    else pat[id][i] = (id === 'bass') ? liveNote() : 1;
+    paintCell(id, i);
+    const v = pat[id][i];
+    if (v && audio){
+      trigger(id, audio.currentTime + 0.02, v);           // audition the hit
+      if (id === 'bass') info('808 · ' + v.note);
+    }
+  }
+
+  function trigger(id, t, v){
+    if (!drumBus) return;
+    if (id === 'kick') dKick(t);
+    else if (id === 'snare') dSnare(t);
+    else if (id === 'clap') dClap(t);
+    else if (id === 'hat') dHat(t, false);
+    else if (id === 'open') dHat(t, true);
+    else if (id === 'bass') d808(t, v.f, Math.min(0.95, stepDur() * 3.2));
+  }
+
+  // lookahead scheduler: queue steps a little ahead of the clock so timing is sample-accurate
+  function scheduler(){
+    if (!audio) return;
+    const horizon = audio.currentTime + 0.12;
+    while (nextTime < horizon){
+      if (nextTime > audio.currentTime - 0.02){           // skip anything already past due
+        const off = (curStep % 2) ? SWINGS[swingIdx].v * stepDur() : 0;
+        for (const id of TRACKS){
+          const v = pat[id][curStep];
+          if (v && !mutes[id]) trigger(id, nextTime + off, v);
+        }
+        drawQ.push({ s: curStep, t: nextTime + off });
+      }
+      nextTime += stepDur();
+      curStep = (curStep + 1) % STEPS;
+    }
+  }
+
+  function playBeat(){
+    if (playing || !audio) return;
+    audio.resume();
+    playing = true; curStep = 0; nextTime = audio.currentTime + 0.08;
+    scheduler();
+    tickTimer = setInterval(scheduler, 25);
+    $('play').setAttribute('aria-pressed', 'true');
+    $('play').textContent = '■ STOP';
+  }
+
+  function stopBeat(){
+    playing = false;
+    clearInterval(tickTimer); tickTimer = null;
+    drawQ.length = 0;
+    if (lastCol >= 0){
+      headEls[lastCol].classList.remove('on');
+      for (const id of TRACKS) cells[id][lastCol].classList.remove('hit');
+      lastCol = -1;
+    }
+    $('play').setAttribute('aria-pressed', 'false');
+    $('play').textContent = '▶ PLAY';
+  }
+
+  function showCol(s){
+    if (lastCol >= 0){
+      headEls[lastCol].classList.remove('on');
+      for (const id of TRACKS) cells[id][lastCol].classList.remove('hit');
+    }
+    headEls[s].classList.add('on');
+    for (const id of TRACKS) if (pat[id][s] && !mutes[id]) cells[id][s].classList.add('hit');
+    lastCol = s;
+  }
+
+  function loadPattern(p){
+    const note = liveNote();
+    for (const id of TRACKS){
+      const row = p[id] || '';
+      for (let i = 0; i < STEPS; i++){
+        const on = row[i] === 'x';
+        pat[id][i] = on ? (id === 'bass' ? { ...note } : 1) : null;
+        paintCell(id, i);
+      }
+    }
+  }
+
+  function info(msg){
+    $('beatinfo').textContent = msg;
+    clearTimeout(infoTimer);
+    infoTimer = setTimeout(() => { $('beatinfo').textContent = INFO; }, 2200);
+  }
+
+  function setBpm(v){
+    bpm = Math.max(60, Math.min(180, v));
+    $('bpmval').textContent = bpm + ' BPM';
+  }
+
+  // press and hold to run the tempo up or down
+  function repeat(btn, fn){
+    let delay, tick, fromPointer = false;
+    const stop = () => { clearTimeout(delay); clearInterval(tick); };
+    btn.addEventListener('pointerdown', e => {
+      e.preventDefault(); fromPointer = true; fn();
+      delay = setTimeout(() => { tick = setInterval(fn, 70); }, 380);
+    });
+    for (const ev of ['pointerup','pointerleave','pointercancel']) btn.addEventListener(ev, stop);
+    // keyboard activation arrives as a bare click, with no pointerdown before it
+    btn.addEventListener('click', () => { if (fromPointer) fromPointer = false; else fn(); });
   }
 
   // ---------- camera ----------
@@ -345,7 +737,7 @@
   }
 
   // ---------- recording ----------
-  let recorder = null, recChunks = [], recStart = 0, recMime = '', recHasVideo = false;
+  let recorder = null, recChunks = [], recStart = 0, recMime = '', recHasVideo = false, recBpm = 0;
   let lastURL = null;
 
   function pickMime(){
@@ -378,6 +770,7 @@
     recorder.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); };
     recorder.onstop = showTake;
     recorder.start(1000);
+    recBpm = playing ? bpm : 0;
     recStart = performance.now();
     $('rectag').classList.add('on');
     return true;
@@ -399,7 +792,8 @@
     dl.href = lastURL;
     dl.download = 'colour-theremin-' + stamp + '.' + ext;
     $('takemeta').textContent =
-      fmtTime(secs) + ' · ' + VOICES[voiceIdx].name + ' · ' + (recHasVideo ? 'VIDEO + SOUND' : 'SOUND ONLY');
+      fmtTime(secs) + ' · ' + VOICES[voiceIdx].name + (recBpm ? ' · ' + recBpm + ' BPM' : '') +
+      ' · ' + (recHasVideo ? 'VIDEO + SOUND' : 'SOUND ONLY');
     const tv = $('takevid');
     if (recHasVideo){ tv.src = lastURL; tv.classList.add('on'); }
     else { tv.removeAttribute('src'); tv.classList.remove('on'); }
@@ -484,6 +878,9 @@
     // motion -> vibrato depth
     lfoGain.gain.setTargetAtTime(smMotion * f * 0.045, now, 0.1);
 
+    // the beat machine reads these to tune its 808 from whatever you are aiming at
+    liveFreq = f; liveHue = smHue;
+
     // --- drive the UI ---
     const liveCss = `hsl(${smHue.toFixed(0)} ${(Math.max(smSat,0.25)*100).toFixed(0)}% ${(45 + smLight*25).toFixed(0)}%)`;
     document.documentElement.style.setProperty('--live', liveCss);
@@ -493,7 +890,16 @@
     $('hex').textContent = '#' + hx(r) + hx(g) + hx(b);
     $('marker').style.top = ((1 - smHue/360) * 100) + '%';
 
+    // --- playhead ---
+    // only the newest due step is drawn, so a backgrounded tab cannot flood the DOM
+    if (playing){
+      let due = -1;
+      while (drawQ.length && drawQ[0].t <= audio.currentTime) due = drawQ.shift().s;
+      if (due >= 0) showCol(due);
+    }
+
     // --- oscilloscope ---
+    if (beatOpen) return;
     if (!waveBuf || waveBuf.length !== analyser.fftSize) waveBuf = new Uint8Array(analyser.fftSize);
     analyser.getByteTimeDomainData(waveBuf);
     const W = scope.width, H = scope.height;
@@ -547,6 +953,42 @@
     e.currentTarget.setAttribute('aria-pressed', facing === 'user');
     try{ await openCamera(); prevFrame = null; }catch(_){ /* keep old cam */ }
   });
+  $('beat').addEventListener('click', e => {
+    beatOpen = toggle(e.currentTarget);
+    document.body.classList.toggle('beat', beatOpen);
+    if (beatOpen && !seeded){                    // first open lands on a beat, ready to play
+      seeded = true;
+      loadPattern(PATTERNS[ptnIdx]);
+    }
+    sizeScope();
+  });
+  $('play').addEventListener('click', () => { playing ? stopBeat() : playBeat(); });
+  repeat($('bpmdn'), () => setBpm(bpm - 1));
+  repeat($('bpmup'), () => setBpm(bpm + 1));
+  $('swing').addEventListener('click', e => {
+    swingIdx = (swingIdx + 1) % SWINGS.length;
+    e.currentTarget.textContent = SWINGS[swingIdx].n;
+  });
+  $('ptn').addEventListener('click', e => {
+    ptnIdx = (ptnIdx + 1) % PATTERNS.length;
+    seeded = true;
+    loadPattern(PATTERNS[ptnIdx]);
+    e.currentTarget.textContent = PATTERNS[ptnIdx].name;
+  });
+  $('clr').addEventListener('click', () => {
+    for (const id of TRACKS) for (let i = 0; i < STEPS; i++){ pat[id][i] = null; paintCell(id, i); }
+    seeded = true;
+    info('CLEARED');
+  });
+
+  // space toggles the transport, unless a button has focus and wants the key itself
+  addEventListener('keydown', e => {
+    if (e.code !== 'Space' || !beatOpen || !running) return;
+    if (e.target instanceof HTMLElement && e.target !== document.body) return;
+    e.preventDefault();
+    playing ? stopBeat() : playBeat();
+  });
+
   $('rec').addEventListener('click', e => {
     const btn = e.currentTarget;
     if (recorder && recorder.state === 'recording'){
@@ -561,11 +1003,21 @@
     }
   });
 
-  // pause audio when tab hidden
+  // pause audio when tab hidden. the beat keeps its place: the scheduler skips
+  // past-due steps, so it comes back in time rather than firing a backlog at once.
   document.addEventListener('visibilitychange', () => {
     if (!audio) return;
-    if (document.hidden){ gainNode.gain.setTargetAtTime(0, audio.currentTime, 0.05); }
+    const now = audio.currentTime;
+    if (document.hidden){
+      gainNode.gain.setTargetAtTime(0, now, 0.05);
+      if (drumBus) drumBus.gain.setTargetAtTime(0, now, 0.05);
+    } else if (drumBus){
+      drumBus.gain.setTargetAtTime(DRUM_LEVEL, now, 0.05);
+    }
   });
+
+  buildGrid();
+  setBpm(bpm);
 })();
 </script>
 </body>
