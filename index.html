@@ -51,6 +51,8 @@
   #video{
     position:fixed;inset:0;width:100%;height:100%;object-fit:cover;
     background:var(--ink)}
+  /* hit ripples, drawn under the reticle and over the camera */
+  #fx{position:fixed;inset:0;width:100%;height:100%;z-index:4;pointer-events:none}
   #reticle{
     position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
     width:min(34vmin,180px);height:min(34vmin,180px);border-radius:50%;
@@ -139,6 +141,7 @@
     transition:background .15s,color .15s,border-color .15s}
   .bctl:focus-visible{outline:2px solid var(--paper);outline-offset:3px}
   #play[aria-pressed="true"]{background:var(--paper);color:var(--ink);border-color:var(--paper)}
+  #cap[aria-pressed="true"]{background:var(--rec);border-color:var(--rec);color:#fff}
   #tempo{display:flex;align-items:center;border:1px solid rgba(237,239,234,.35);
     border-radius:2px;overflow:hidden}
   #tempo button{padding:5px 11px;font-size:13px;line-height:1;touch-action:manipulation}
@@ -213,6 +216,7 @@
 
 <!-- INSTRUMENT -->
 <video id="video" autoplay playsinline muted></video>
+<canvas id="fx" aria-hidden="true"></canvas>
 <div id="reticle" aria-hidden="true"></div>
 
 <header id="topbar">
@@ -252,6 +256,7 @@
           <span id="bpmval">92 BPM</span>
           <button id="bpmup" aria-label="Faster">+</button>
         </div>
+        <button class="bctl" id="cap" aria-pressed="false">CAPTURE</button>
       </div>
       <div class="tgrp">
         <button class="bctl" id="swing">STRAIGHT</button>
@@ -563,7 +568,7 @@
     let f = liveFreq / 4;
     if (!(f > 0)) f = 55;                                 // never let the fold below spin
     while (f < 41) f *= 2;                                // octave folding keeps it in key
-    return { f, css:`hsl(${liveHue.toFixed(0)} 85% 58%)`, note: freqToNoteName(f) };
+    return { f, hue: liveHue, css:`hsl(${liveHue.toFixed(0)} 85% 58%)`, note: freqToNoteName(f) };
   }
 
   function paintCell(id, i){
@@ -626,7 +631,9 @@
     const id = zoneFor(smHue);
     const vel = Math.min(1, 0.35 + excess * 14);
     trigger(id, now + 0.005, id === 'bass' ? liveNote() : 1, vel);
+    spawnPulse(id, vel, smHue);          // ripple in the colour you actually struck
     flashReticle();
+    captureHit(id, now);
   }
 
   // lookahead scheduler: queue steps a little ahead of the clock so timing is sample-accurate
@@ -676,7 +683,14 @@
       for (const id of TRACKS) cells[id][lastCol].classList.remove('hit');
     }
     headEls[s].classList.add('on');
-    for (const id of TRACKS) if (pat[id][s] && !mutes[id]) cells[id][s].classList.add('hit');
+    for (const id of TRACKS){
+      const v = pat[id][s];
+      if (!v || mutes[id]) continue;
+      cells[id][s].classList.add('hit');
+      spawnPulse(id, 1, id === 'bass' ? v.hue : null);
+    }
+    // the audible position of this step, which is what quantising a live hit needs
+    lastStepAt = audio.currentTime; lastStepIdx = s;
     lastCol = s;
   }
 
@@ -714,6 +728,238 @@
     for (const ev of ['pointerup','pointerleave','pointercancel']) btn.addEventListener(ev, stop);
     // keyboard activation arrives as a bare click, with no pointerdown before it
     btn.addEventListener('click', () => { if (fromPointer) fromPointer = false; else fn(); });
+  }
+
+  // ---------- hit visuals ----------
+  // Every drum that sounds throws a ring of its own colour from its own place on
+  // screen, so the picture reacts to which colour you activated, not just that
+  // something happened.
+  const fx = $('fx'), fxc = fx.getContext('2d');
+  const TRACK_HUE = { kick:0, snare:90, clap:150, hat:210, open:270, bass:330 };
+  const TRACK_POS = { kick:[.5,.7], snare:[.5,.5], clap:[.26,.42], hat:[.76,.3], open:[.24,.3], bass:[.5,.84] };
+  const pulses = [];
+  let flash = 0, flashHue = 0;
+
+  function sizeFx(){
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    fx.width = Math.round(innerWidth * dpr);
+    fx.height = Math.round(innerHeight * dpr);
+  }
+
+  function spawnPulse(id, vel, hue){
+    const [px, py] = TRACK_POS[id] || [.5, .5];
+    const low = (id === 'kick' || id === 'bass');
+    pulses.push({
+      x:px, y:py, r:0,
+      max:(low ? 0.34 : 0.2) + vel * 0.4,
+      hue: (hue == null) ? TRACK_HUE[id] : hue,
+      life:1, fade: low ? 0.028 : 0.05, wide: low,
+    });
+    if (pulses.length > 36) pulses.splice(0, pulses.length - 36);
+    // low drums also bloom the whole frame, so a kick reads even off-centre
+    if (low && vel > 0.5){ flash = Math.max(flash, vel * 0.3); flashHue = (hue == null) ? TRACK_HUE[id] : hue; }
+  }
+
+  function drawFx(){
+    const W = fx.width, H = fx.height, S = Math.min(W, H);
+    fxc.clearRect(0, 0, W, H);
+    if (flash > 0.003){
+      fxc.fillStyle = `hsla(${flashHue} 95% 60% / ${flash})`;
+      fxc.fillRect(0, 0, W, H);
+      flash *= 0.82;
+    }
+    for (let i = pulses.length - 1; i >= 0; i--){
+      const p = pulses[i];
+      p.life -= p.fade;
+      if (p.life <= 0){ pulses.splice(i, 1); continue; }
+      p.r += (p.max - p.r) * 0.16;
+      const a = p.life * p.life;
+      fxc.beginPath();
+      fxc.arc(p.x * W, p.y * H, Math.max(p.r * S, 1), 0, Math.PI * 2);
+      fxc.fillStyle = `hsla(${p.hue} 95% 58% / ${a * 0.1})`;
+      fxc.fill();
+      fxc.strokeStyle = `hsla(${p.hue} 95% 64% / ${a * 0.9})`;
+      fxc.lineWidth = Math.max(1, (p.wide ? 9 : 4) * a * (S / 900));
+      fxc.stroke();
+    }
+  }
+
+  // ---------- capturing a performance into the loop ----------
+  // Camera hits are one-shots; this writes them onto the grid at the nearest
+  // sixteenth so what you play comes back round instead of vanishing.
+  let capturing = false, lastStepAt = -1, lastStepIdx = -1;
+
+  function captureHit(id, now){
+    if (!capturing || !playing || lastStepAt < 0) return;
+    const frac = (now - lastStepAt) / stepDur();
+    const step = (((lastStepIdx + Math.round(frac)) % STEPS) + STEPS) % STEPS;
+    pat[id][step] = (id === 'bass') ? liveNote() : 1;
+    paintCell(id, step);
+  }
+
+  // ---------- recording composite ----------
+  // The camera track alone records the raw picture with none of the instrument on it.
+  // This redraws the frame plus the interface into a canvas, and records that instead.
+  const INK = '#0a0b0d', PAPER = '#edefea', DIM = '#8b9089', REC_RED = '#ff4d3d';
+  const CHROME_BTNS = ['voice','beat','snap','flip','mute','rec','play','cap','swing','ptn','clr'];
+  const CHROME_TEXT = [
+    ['wordmark', 11, 'left',   'mich', 'paper', .2],
+    ['note',     26, 'right',  'mich', 'live',  .06],
+    ['freq',     11, 'right',  'mono', 'dim',   0],
+    ['hex',      11, 'right',  'mono', 'dim',   0],
+    ['bpmval',   10, 'center', 'mono', 'paper', .08],
+    ['beatinfo',  9, 'center', 'mono', 'dim',   .08],
+  ];
+  let capCanvas = null, capCtx = null, capStream = null, layout = null;
+
+  function buildCapture(){
+    capCanvas = document.createElement('canvas');
+    capCtx = capCanvas.getContext('2d');
+    sizeCapture();
+  }
+
+  function sizeCapture(){
+    if (!capCanvas) return;
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    capCanvas.width = Math.round(innerWidth * dpr);
+    capCanvas.height = Math.round(innerHeight * dpr);
+  }
+
+  // Positions come from the live DOM, so the recording matches the layout exactly.
+  // Cached rather than measured per frame: reading rects forces layout, 30 times a second.
+  function snapLayout(){
+    if (!capCanvas) return;
+    const k = capCanvas.width / innerWidth;
+    const R = el => { const r = el.getBoundingClientRect();
+      return { x:r.x*k, y:r.y*k, w:r.width*k, h:r.height*k, r:(r.x+r.width)*k,
+               cx:(r.x+r.width/2)*k, cy:(r.y+r.height/2)*k }; };
+    const vis = el => el && el.getBoundingClientRect().width > 0;
+    layout = { k, btns:[], texts:[], cells:[], head:[], labels:[], scope:null, rectag:null };
+    for (const id of CHROME_BTNS) if (vis($(id))) layout.btns.push({ el:$(id), b:R($(id)) });
+    for (const t of CHROME_TEXT) if (vis($(t[0])))
+      layout.texts.push({ el:$(t[0]), b:R($(t[0])), size:t[1]*k, align:t[2], font:t[3], colour:t[4], ls:t[5]*t[1]*k });
+    if (vis($('scope'))) layout.scope = R($('scope'));
+    layout.spectrum = vis($('spectrum')) ? R($('spectrum')) : null;
+    if (beatOpen){
+      for (const id of TRACKS){
+        for (let i = 0; i < STEPS; i++) if (vis(cells[id][i])) layout.cells.push({ id, i, b:R(cells[id][i]) });
+      }
+      for (const d of headEls) if (vis(d)) layout.head.push(R(d));
+      for (const el of document.querySelectorAll('.blbl')) if (vis(el)) layout.labels.push({ el, b:R(el) });
+    }
+    layout.rectag = vis($('rectag')) ? R($('rectag')) : null;
+  }
+
+  function rrect(g, x, y, w, h, rad){
+    g.beginPath();
+    if (g.roundRect) g.roundRect(x, y, w, h, rad); else g.rect(x, y, w, h);
+  }
+
+  function fontFor(kind, size){
+    return `${size}px ` + (kind === 'mich' ? "'Michroma', sans-serif" : "'IBM Plex Mono', monospace");
+  }
+
+  function drawComposite(liveCss){
+    const g = capCtx, W = capCanvas.width, H = capCanvas.height;
+    if (!layout || layout.k !== W / innerWidth) snapLayout();
+    const k = layout.k;
+
+    // camera frame, cover-fit and mirrored to match what the screen shows
+    g.fillStyle = INK; g.fillRect(0, 0, W, H);
+    if (video.videoWidth){
+      const vw = video.videoWidth, vh = video.videoHeight;
+      const sc = Math.max(W / vw, H / vh), dw = vw * sc, dh = vh * sc;
+      g.save();
+      if (facing === 'user'){ g.translate(W, 0); g.scale(-1, 1); }
+      g.drawImage(video, (W - dw) / 2, (H - dh) / 2, dw, dh);
+      g.restore();
+    }
+
+    g.drawImage(fx, 0, 0, W, H);                       // hit ripples
+
+    // reticle
+    const rad = Math.min(0.34 * Math.min(innerWidth, innerHeight), 180) / 2 * k;
+    const hit = $('reticle').classList.contains('hit');
+    g.beginPath();
+    g.arc(W / 2, H / 2, rad * (hit ? 1.1 : 1), 0, Math.PI * 2);
+    g.strokeStyle = liveCss; g.lineWidth = (hit ? 5 : 2) * k; g.stroke();
+
+    // top and bottom scrims, so text stays legible over a bright scene
+    let grd = g.createLinearGradient(0, 0, 0, 110 * k);
+    grd.addColorStop(0, 'rgba(10,11,13,.75)'); grd.addColorStop(1, 'rgba(10,11,13,0)');
+    g.fillStyle = grd; g.fillRect(0, 0, W, 110 * k);
+    const bTop = H - (beatOpen ? 330 : 150) * k;
+    grd = g.createLinearGradient(0, bTop, 0, H);
+    grd.addColorStop(0, 'rgba(10,11,13,0)'); grd.addColorStop(1, 'rgba(10,11,13,.92)');
+    g.fillStyle = grd; g.fillRect(0, bTop, W, H - bTop);
+
+    if (layout.scope) g.drawImage(scope, layout.scope.x, layout.scope.y, layout.scope.w, layout.scope.h);
+
+    // hue strip with the pitch marker
+    if (layout.spectrum){
+      const s = layout.spectrum;
+      const sg = g.createLinearGradient(0, s.y + s.h, 0, s.y);
+      for (let i = 0; i <= 10; i++) sg.addColorStop(i / 10, `hsl(${i * 36} 90% 55%)`);
+      g.fillStyle = sg; rrect(g, s.x, s.y, s.w, s.h, s.w / 2); g.fill();
+      g.strokeStyle = 'rgba(237,239,234,.25)'; g.lineWidth = Math.max(1, k); g.stroke();
+      const my = s.y + (1 - smHue / 360) * s.h;
+      g.fillStyle = PAPER;
+      rrect(g, s.x - 7 * k, my - 1.5 * k, 22 * k, 3 * k, 2 * k); g.fill();
+    }
+
+    // sequencer grid
+    for (const h of layout.head){
+      g.fillStyle = 'rgba(237,239,234,.14)'; rrect(g, h.x, h.y, h.w, h.h, 2 * k); g.fill();
+    }
+    if (layout.head[lastCol]){
+      const h = layout.head[lastCol];
+      g.fillStyle = liveCss; rrect(g, h.x, h.y, h.w, h.h, 2 * k); g.fill();
+    }
+    for (const c of layout.cells){
+      const v = pat[c.id][c.i];
+      rrect(g, c.b.x, c.b.y, c.b.w, c.b.h, 2 * k);
+      if (v){ g.fillStyle = (c.id === 'bass') ? v.css : PAPER; g.fill(); }
+      else { g.fillStyle = 'rgba(237,239,234,.10)'; g.fill(); }
+    }
+    for (const l of layout.labels){
+      g.font = fontFor('mono', 9 * k);
+      g.textAlign = 'right'; g.textBaseline = 'middle';
+      g.fillStyle = l.el.classList.contains('muted') ? 'rgba(139,144,137,.35)' : DIM;
+      g.fillText(l.el.textContent, l.b.r, l.b.cy);
+    }
+
+    // buttons, drawn from their live pressed state
+    for (const { el, b } of layout.btns){
+      const pressed = el.getAttribute('aria-pressed') === 'true';
+      const red = pressed && (el.id === 'rec' || el.id === 'cap');
+      rrect(g, b.x, b.y, b.w, b.h, 2 * k);
+      if (pressed){ g.fillStyle = red ? REC_RED : PAPER; g.fill(); }
+      else { g.strokeStyle = 'rgba(237,239,234,.35)'; g.lineWidth = Math.max(1, k); g.stroke(); }
+      g.fillStyle = pressed ? (red ? '#fff' : INK) : PAPER;
+      g.font = fontFor('mono', (el.classList.contains('bctl') ? 10 : 11) * k);
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(el.textContent.trim(), b.cx, b.cy);
+    }
+
+    // readouts
+    for (const t of layout.texts){
+      g.font = fontFor(t.font, t.size);
+      if ('letterSpacing' in g) g.letterSpacing = t.ls + 'px';
+      g.fillStyle = t.colour === 'live' ? liveCss : (t.colour === 'dim' ? DIM : PAPER);
+      g.textBaseline = 'middle'; g.textAlign = t.align;
+      g.fillText(t.el.textContent, t.align === 'right' ? t.b.r : (t.align === 'left' ? t.b.x : t.b.cx), t.b.cy);
+      if ('letterSpacing' in g) g.letterSpacing = '0px';
+    }
+
+    // recording tally
+    if (layout.rectag && $('rectag').classList.contains('on')){
+      const b = layout.rectag;
+      g.fillStyle = REC_RED;
+      g.beginPath(); g.arc(b.x + 4 * k, b.cy, 4 * k, 0, Math.PI * 2); g.fill();
+      g.font = fontFor('mono', 11 * k);
+      g.textAlign = 'left'; g.textBaseline = 'middle';
+      g.fillText($('rectime').textContent, b.x + 15 * k, b.cy);
+    }
   }
 
   // ---------- camera ----------
@@ -796,8 +1042,15 @@
     const tracks = [...recDest.stream.getAudioTracks()];
     recHasVideo = false;
     if (pick.video && stream && stream.getVideoTracks().length){
-      tracks.unshift(stream.getVideoTracks()[0]);
-      recHasVideo = true;
+      // record the composited canvas, not the bare camera, so the take carries
+      // the reticle, readouts, ripples and sequencer along with the picture
+      if (!capCanvas) buildCapture();
+      sizeCapture();
+      snapLayout();
+      drawComposite(getComputedStyle(document.documentElement).getPropertyValue('--live').trim() || PAPER);
+      if (!capStream) capStream = capCanvas.captureStream(30);
+      const vt = capStream.getVideoTracks()[0];
+      if (vt){ tracks.unshift(vt); recHasVideo = true; }
     }
     recMime = pick.mime;
     recChunks = [];
@@ -854,7 +1107,7 @@
     scope.width = scope.clientWidth * devicePixelRatio;
     scope.height = 64 * devicePixelRatio;
   }
-  addEventListener('resize', sizeScope);
+  addEventListener('resize', () => { sizeScope(); sizeFx(); sizeCapture(); layout = null; });
 
   let waveBuf;
 
@@ -947,22 +1200,29 @@
       if (due >= 0) showCol(due);
     }
 
+    // --- hit ripples ---
+    drawFx();
+
     // --- oscilloscope ---
-    if (beatOpen) return;
-    if (!waveBuf || waveBuf.length !== analyser.fftSize) waveBuf = new Uint8Array(analyser.fftSize);
-    analyser.getByteTimeDomainData(waveBuf);
-    const W = scope.width, H = scope.height;
-    scopeCtx.clearRect(0, 0, W, H);
-    scopeCtx.lineWidth = 2 * devicePixelRatio;
-    scopeCtx.strokeStyle = liveCss;
-    scopeCtx.beginPath();
-    const step = reduceMotion ? 16 : 2;
-    for (let i = 0; i < waveBuf.length; i += step){
-      const x = (i / waveBuf.length) * W;
-      const y = (waveBuf[i] / 255) * H;
-      i === 0 ? scopeCtx.moveTo(x, y) : scopeCtx.lineTo(x, y);
+    if (!beatOpen){
+      if (!waveBuf || waveBuf.length !== analyser.fftSize) waveBuf = new Uint8Array(analyser.fftSize);
+      analyser.getByteTimeDomainData(waveBuf);
+      const W = scope.width, H = scope.height;
+      scopeCtx.clearRect(0, 0, W, H);
+      scopeCtx.lineWidth = 2 * devicePixelRatio;
+      scopeCtx.strokeStyle = liveCss;
+      scopeCtx.beginPath();
+      const step = reduceMotion ? 16 : 2;
+      for (let i = 0; i < waveBuf.length; i += step){
+        const x = (i / waveBuf.length) * W;
+        const y = (waveBuf[i] / 255) * H;
+        i === 0 ? scopeCtx.moveTo(x, y) : scopeCtx.lineTo(x, y);
+      }
+      scopeCtx.stroke();
     }
-    scopeCtx.stroke();
+
+    // --- recording composite: camera + ripples + the whole interface ---
+    if (capCtx && recorder && recorder.state === 'recording') drawComposite(liveCss);
   }
 
   // ---------- boot ----------
@@ -1010,8 +1270,19 @@
       loadPattern(PATTERNS[ptnIdx]);
     }
     sizeScope();
+    layout = null;                               // the grid just appeared or left
   });
   $('play').addEventListener('click', () => { playing ? stopBeat() : playBeat(); });
+  // CAPTURE only means anything with a loop turning and the camera striking drums,
+  // so switching it on arranges both rather than failing silently.
+  $('cap').addEventListener('click', e => {
+    capturing = toggle(e.currentTarget);
+    if (!capturing){ info('CAPTURE OFF'); return; }
+    const drumIdx = VOICES.findIndex(v => v.drums);
+    if (voiceIdx !== drumIdx){ voiceIdx = drumIdx; applyVoice(); }
+    if (!playing) playBeat();
+    info('PLAY THE CAMERA · HITS LAND ON THE GRID');
+  });
   repeat($('bpmdn'), () => setBpm(bpm - 1));
   repeat($('bpmup'), () => setBpm(bpm + 1));
   $('swing').addEventListener('click', e => {
@@ -1067,6 +1338,7 @@
 
   buildGrid();
   setBpm(bpm);
+  sizeFx();
 })();
 </script>
 </body>

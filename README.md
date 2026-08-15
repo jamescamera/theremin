@@ -21,6 +21,12 @@ to A minor pentatonic so everything stays in key. **FLIP** switches cameras, **M
 silences the tone, and **REC** captures a take — video plus sound where the browser supports
 it, otherwise audio only.
 
+Recordings are composited rather than taken from the raw camera track: each frame is redrawn
+into a canvas with the reticle, readouts, hit ripples, spectrum, oscilloscope, every control
+and the live sequencer grid on top, and *that* is what gets recorded. Element positions are
+read from the DOM so the take matches the layout exactly, and cached rather than measured per
+frame — reading rects forces layout, thirty times a second.
+
 ## Playing the drums with the camera
 
 Set **VOICE** to **DRUMS** and the instrument stops holding a tone altogether. The oscillators
@@ -38,8 +44,23 @@ threshold, so a busy or grainy picture will not machine-gun and a calm one still
 There is a 110 ms refractory gap between hits. **MUTE** stops the camera striking, which
 leaves the sequencer running underneath — handy for dropping out of your own take.
 
-Deliberately not quantised: hits fire immediately rather than snapping to the grid, because
-waiting up to a sixteenth note to hear your own hit feels broken. Play in time by ear.
+Every drum that sounds throws a ring of its own colour from its own place on screen — kick
+from low, hats from up high, the 808 in whatever colour you wrote it with — so the picture
+reacts to *which* colour you activated rather than just flashing. Kicks and 808s bloom the
+whole frame so they read even when you are looking elsewhere.
+
+### Making it repeat
+
+**CAPTURE** turns a performance into a loop. Hits you play with the camera are quantised to
+the nearest sixteenth and written onto the grid, so they come back round instead of
+vanishing — the cells light up as you play them, and you can then mute, clear or retune what
+you caught. Because capture is meaningless without a loop turning and a camera striking
+drums, switching it on selects the DRUMS voice and starts the transport rather than failing
+silently.
+
+The hits you *hear* are still not quantised — only the ones written to the grid are. Snapping
+live playback forward to the next sixteenth would put up to ~160 ms between the gesture and
+the sound, which reads as broken. So you play loose and the loop repeats tight.
 
 ## The beat machine
 
