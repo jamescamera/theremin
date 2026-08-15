@@ -15,10 +15,31 @@ the synth:
 | Saturation | Timbre, opening a lowpass filter — grey scenes sound dull |
 | Motion | Vibrato depth |
 
-**VOICE** cycles five oscillator setups (saw, pure, chip, drone, organ). **SNAP** quantises
+**VOICE** cycles five oscillator setups (saw, pure, chip, drone, organ) plus **DRUMS** — see
+below. **SNAP** quantises
 to A minor pentatonic so everything stays in key. **FLIP** switches cameras, **MUTE**
 silences the tone, and **REC** captures a take — video plus sound where the browser supports
 it, otherwise audio only.
+
+## Playing the drums with the camera
+
+Set **VOICE** to **DRUMS** and the instrument stops holding a tone altogether. The oscillators
+go silent and the camera strikes a kit instead:
+
+- **Hue picks the drum**, in six arcs around the wheel — reds are the kick, yellow-greens the
+  snare, greens the clap, blues the hat, violets the open hat, magentas the 808. The readout
+  names whichever one you are pointed at, so you can find a drum before you hit it.
+- **Movement is the stick.** A flick of motion fires the hit; holding still is silence.
+- **How hard you move is velocity**, so the kit plays soft or loud.
+- In the 808 arc, the note still comes from the colour, and the readout shows it.
+
+Hits are detected as a *rise* above the scene's own motion floor rather than a fixed
+threshold, so a busy or grainy picture will not machine-gun and a calm one still responds.
+There is a 110 ms refractory gap between hits. **MUTE** stops the camera striking, which
+leaves the sequencer running underneath — handy for dropping out of your own take.
+
+Deliberately not quantised: hits fire immediately rather than snapping to the grid, because
+waiting up to a sixteenth note to hear your own hit feels broken. Play in time by ear.
 
 ## The beat machine
 

@@ -56,7 +56,11 @@
     width:min(34vmin,180px);height:min(34vmin,180px);border-radius:50%;
     border:2px solid var(--live);z-index:5;pointer-events:none;
     box-shadow:0 0 0 1px rgba(10,11,13,.35), inset 0 0 0 1px rgba(10,11,13,.35);
-    transition:border-color .12s linear}
+    transition:border-color .12s linear,transform .09s ease,border-width .09s ease}
+  /* struck: the reticle kicks like a drum head */
+  #reticle.hit{transform:translate(-50%,-50%) scale(1.1);border-width:5px}
+  @media (prefers-reduced-motion:reduce){
+    #reticle.hit{transform:translate(-50%,-50%)}}
   #reticle::before,#reticle::after{
     content:"";position:absolute;background:var(--live);
     transition:background-color .12s linear}
@@ -200,7 +204,9 @@
   <h1><span class="c">C</span><span class="c">O</span><span class="c">L</span><span class="c">O</span><span class="c">U</span><span class="c">R</span>&nbsp;<span class="c">T</span><span class="c">H</span><span class="c">E</span><span class="c">R</span><span class="c">E</span><span class="c">M</span><span class="c">I</span><span class="c">N</span></h1>
   <p>Point your camera at the world and play it.<br><br>
      <span class="rule">HUE</span> is pitch &nbsp;·&nbsp; <span class="rule">BRIGHTNESS</span> is volume &nbsp;·&nbsp; <span class="rule">MOTION</span> is vibrato<br><br>
-     Hit <span class="rule">BEAT</span> for 808 drums, and write a bassline<br>from the colours you aim at.</p>
+     Set <span class="rule">VOICE</span> to <span class="rule">DRUMS</span> and the camera plays the kit —<br>
+     colour picks the drum, movement strikes it.<br><br>
+     Hit <span class="rule">BEAT</span> for a sequencer to play over.</p>
   <button id="go">START</button>
   <p id="err"></p>
 </div>
@@ -306,6 +312,8 @@
     { name:'CHIP',   t1:'square',   g1:0.55, t2:null },
     { name:'DRONE',  t1:'sawtooth', g1:0.6,  t2:'sawtooth', g2:0.6, ratio2:0.5, det2:9 },
     { name:'ORGAN',  t1:'sine',     g1:0.7,  t2:'sine',     g2:0.45, ratio2:2,  det2:0 },
+    // no oscillator at all: the camera strikes drums instead of holding a tone
+    { name:'DRUMS',  t1:'sine',     g1:0,    t2:null, drums:true },
   ];
   let voiceIdx = 0;
 
@@ -412,56 +420,56 @@
     return s;
   }
 
-  function dKick(t){
+  function dKick(t, vel = 1){
     const o = audio.createOscillator(), g = audio.createGain();
     o.type = 'sine';
     o.frequency.setValueAtTime(165, t);
     o.frequency.exponentialRampToValueAtTime(44, t + 0.11);
-    env(g, t, 1.0, 0.004, 0.44);
+    env(g, t, 1.0 * vel, 0.004, 0.44);
     o.connect(g); g.connect(drumBus);
     o.start(t); o.stop(t + 0.5);
     const n = noiseAt(t, 0.03), hp = audio.createBiquadFilter(), ng = audio.createGain();
     hp.type = 'highpass'; hp.frequency.value = 1400;      // beater click
-    env(ng, t, 0.22, 0.001, 0.022);
+    env(ng, t, 0.22 * vel, 0.001, 0.022);
     n.connect(hp); hp.connect(ng); ng.connect(drumBus);
   }
 
-  function dSnare(t){
+  function dSnare(t, vel = 1){
     const n = noiseAt(t, 0.24), hp = audio.createBiquadFilter(), g = audio.createGain();
     hp.type = 'highpass'; hp.frequency.value = 1500;
-    env(g, t, 0.5, 0.002, 0.17);
+    env(g, t, 0.5 * vel, 0.002, 0.17);
     n.connect(hp); hp.connect(g); g.connect(drumBus);
     const o = audio.createOscillator(), og = audio.createGain();
     o.type = 'triangle';
     o.frequency.setValueAtTime(225, t);
     o.frequency.exponentialRampToValueAtTime(150, t + 0.1);
-    env(og, t, 0.45, 0.002, 0.12);
+    env(og, t, 0.45 * vel, 0.002, 0.12);
     o.connect(og); og.connect(drumBus);
     o.start(t); o.stop(t + 0.2);
   }
 
-  function dClap(t){
+  function dClap(t, vel = 1){
     const bp = audio.createBiquadFilter();
     bp.type = 'bandpass'; bp.frequency.value = 1100; bp.Q.value = 1.1;
     bp.connect(drumBus);
     for (const off of [0, 0.011, 0.022]){                 // three quick slaps
       const n = noiseAt(t + off, 0.05), g = audio.createGain();
-      env(g, t + off, 0.45, 0.001, 0.035);
+      env(g, t + off, 0.45 * vel, 0.001, 0.035);
       n.connect(g); g.connect(bp);
     }
     const n = noiseAt(t + 0.033, 0.24), g = audio.createGain();   // and the room tail
-    env(g, t + 0.033, 0.38, 0.002, 0.19);
+    env(g, t + 0.033, 0.38 * vel, 0.002, 0.19);
     n.connect(g); g.connect(bp);
   }
 
   // classic 808 metal: six detuned squares through a bandpass/highpass pair
   const HAT_RATIOS = [2, 3, 4.16, 5.43, 6.79, 8.21];
-  function dHat(t, open){
+  function dHat(t, open, vel = 1){
     const dec = open ? 0.34 : 0.05;
     const bp = audio.createBiquadFilter(), hp = audio.createBiquadFilter(), g = audio.createGain();
     bp.type = 'bandpass'; bp.frequency.value = 10000; bp.Q.value = 0.8;
     hp.type = 'highpass'; hp.frequency.value = 7000;
-    env(g, t, open ? 0.24 : 0.3, 0.001, dec);
+    env(g, t, (open ? 0.24 : 0.3) * vel, 0.001, dec);
     bp.connect(hp); hp.connect(g); g.connect(drumBus);
     for (const r of HAT_RATIOS){
       const o = audio.createOscillator();
@@ -470,12 +478,12 @@
     }
   }
 
-  function d808(t, f, dec){
+  function d808(t, f, dec, vel = 1){
     const o = audio.createOscillator(), g = audio.createGain();
     o.type = 'sine';
     o.frequency.setValueAtTime(f * 2.1, t);               // the pitch-drop pluck
     o.frequency.exponentialRampToValueAtTime(f, t + 0.045);
-    env(g, t, 0.9, 0.006, dec);
+    env(g, t, 0.9 * vel, 0.006, dec);
     o.connect(g); g.connect(bassIn);
     o.start(t); o.stop(t + dec + 0.1);
   }
@@ -579,14 +587,46 @@
     }
   }
 
-  function trigger(id, t, v){
+  function trigger(id, t, v, vel = 1){
     if (!drumBus) return;
-    if (id === 'kick') dKick(t);
-    else if (id === 'snare') dSnare(t);
-    else if (id === 'clap') dClap(t);
-    else if (id === 'hat') dHat(t, false);
-    else if (id === 'open') dHat(t, true);
-    else if (id === 'bass') d808(t, v.f, Math.min(0.95, stepDur() * 3.2));
+    vel = Math.max(0.05, Math.min(1, vel));   // env() ramps exponentially: never reach 0
+    if (id === 'kick') dKick(t, vel);
+    else if (id === 'snare') dSnare(t, vel);
+    else if (id === 'clap') dClap(t, vel);
+    else if (id === 'hat') dHat(t, false, vel);
+    else if (id === 'open') dHat(t, true, vel);
+    else if (id === 'bass') d808(t, v.f, Math.min(0.95, stepDur() * 3.2), vel);
+  }
+
+  // ---------- drum theremin ----------
+  // In the DRUMS voice the camera stops holding a tone and strikes instead:
+  // hue picks the drum, a flick of motion is the stick, and how hard you move is velocity.
+  const ZONES = ['kick','snare','clap','hat','open','bass'];
+  const ZONE_ARC = 360 / ZONES.length;
+  let motionBase = 0, lastHit = -1, reticleTimer = null;
+
+  function zoneFor(h){
+    return ZONES[Math.max(0, Math.min(ZONES.length - 1, Math.floor(h / ZONE_ARC)))];
+  }
+
+  function flashReticle(){
+    const r = $('reticle');
+    r.classList.add('hit');
+    clearTimeout(reticleTimer);
+    reticleTimer = setTimeout(() => r.classList.remove('hit'), 90);
+  }
+
+  // Fires on a rise above the scene's own motion floor rather than a fixed threshold,
+  // so a busy or noisy picture does not machine-gun and a calm one still responds.
+  function drumTheremin(motion, now){
+    motionBase += (motion - motionBase) * 0.05;
+    const excess = motion - motionBase * 1.6 - 0.012;
+    if (excess <= 0 || now - lastHit < 0.11) return;
+    lastHit = now;
+    const id = zoneFor(smHue);
+    const vel = Math.min(1, 0.35 + excess * 14);
+    trigger(id, now + 0.005, id === 'bass' ? liveNote() : 1, vel);
+    flashReticle();
   }
 
   // lookahead scheduler: queue steps a little ahead of the clock so timing is sample-accurate
@@ -881,11 +921,20 @@
     // the beat machine reads these to tune its 808 from whatever you are aiming at
     liveFreq = f; liveHue = smHue;
 
+    // in the DRUMS voice the oscillators are silent and motion strikes the kit instead
+    const drumZone = v.drums ? zoneFor(smHue) : null;
+    if (v.drums && !muted) drumTheremin(motion, now);
+
     // --- drive the UI ---
     const liveCss = `hsl(${smHue.toFixed(0)} ${(Math.max(smSat,0.25)*100).toFixed(0)}% ${(45 + smLight*25).toFixed(0)}%)`;
     document.documentElement.style.setProperty('--live', liveCss);
-    $('note').textContent = vol < 0.005 ? '·' : freqToNoteName(f);
-    $('freq').textContent = f.toFixed(1) + ' Hz';
+    if (drumZone){
+      $('note').textContent = LABELS[drumZone];
+      $('freq').textContent = drumZone === 'bass' ? liveNote().note : 'MOVE TO PLAY';
+    } else {
+      $('note').textContent = vol < 0.005 ? '·' : freqToNoteName(f);
+      $('freq').textContent = f.toFixed(1) + ' Hz';
+    }
     const hx = c => Math.round(c).toString(16).padStart(2,'0');
     $('hex').textContent = '#' + hx(r) + hx(g) + hx(b);
     $('marker').style.top = ((1 - smHue/360) * 100) + '%';
